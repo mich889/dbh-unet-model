@@ -1,0 +1,2 @@
+*.npy filter=lfs diff=lfs merge=lfs -text
+/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/dbh.npy filter=lfs diff=lfs merge=lfs -text
