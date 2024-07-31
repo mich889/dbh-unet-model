@@ -10,6 +10,7 @@ from unet import UNet, image_path, init_weights
 from torch.utils.data import DataLoader, Dataset
 from model import UNET
 import cv2
+from predict import train_on_loaded_model, normalize
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_PATH = os.path.join(BASE_DIR, "datafiles/DJI_0002.JPG")
@@ -17,6 +18,7 @@ SEGMENTATION_PATH = os.path.join(BASE_DIR, "datafiles/dbh.npy")
 MODEL_SAVE_PATH = os.path.join(BASE_DIR, "datafiles/models/model.pth")
 OUTPUT_IMAGE_PATH = os.path.join(BASE_DIR, "datafiles/generated_outputs/dbh_comparison.png")
 DBH_FILE = os.path.join(BASE_DIR, "datafiles/dbh.npy")
+LOADED_MODEL = os.path.join(BASE_DIR, "datafiles/models/model_16.pth")
 
 class CustomDataset(Dataset):
     def __init__(self, image_path, segmentation_path, transform=None):
@@ -67,9 +69,9 @@ def load_data(image_path, segmentation_path):
     transform = transforms.Compose([transforms.ToTensor()])
     image_tensor = transform(image).unsqueeze(0).to(device)
     segmentation_tensor = transform(segmentation).unsqueeze(0).to(device)
-    #normalization from segmentation to image
+    # #normalization from segmentation to image
     segmentation_tensor = (segmentation_tensor - segmentation_tensor.min()) / (segmentation_tensor.max() - segmentation_tensor.min())
-    image_tensor = transform(image).unsqueeze(0).to(device)
+    # image_tensor = transform(image).unsqueeze(0).to(device)
 
     return image_tensor, segmentation_tensor
 
@@ -174,7 +176,8 @@ if __name__ == "__main__":
     print(f"Model output min: {output.min()}, Model output max: {output.max()}")
 
     # Denormalize the model output to match the DBH range
-    dbh_min, dbh_max = np.min(np.load(DBH_FILE)), np.max(np.load(DBH_FILE))
+    segmentation_tensor_np = segmentation_tensor.squeeze().cpu().numpy()
+    dbh_min, dbh_max = np.min(segmentation_tensor_np), np.max(segmentation_tensor_np)
     denormalized_output = output * (dbh_max - dbh_min) + dbh_min
     print(f"(denormalized) Model output min: {denormalized_output.min()}, (denormalized) Model output max: {denormalized_output.max()}")
 
@@ -184,29 +187,36 @@ if __name__ == "__main__":
     pred_min, pred_max = np.min(predicted_dbh), np.max(predicted_dbh)
     
     scaled_dbh = ((predicted_dbh - pred_min) * (dbh_max - dbh_min) / (pred_max - pred_min)) + dbh_min
+    
 
+    #loaded model
+    model2 = UNet()
+    model2.load_state_dict(torch.load(LOADED_MODEL, map_location=device))
+    output_image = train_on_loaded_model(image_tensor, model2, segmentation_tensor_np)
+    normalized_output_image, normalization2 = normalize(output_image, segmentation_tensor_np)
 
     # Apply colormap to the images (normalized)
     colormap_original_dbh = cv2.applyColorMap((original_dbh * 255 / dbh_max).astype(np.uint8), cv2.COLORMAP_JET)
     colormap_predicted_dbh = cv2.applyColorMap((predicted_dbh * 255 / dbh_max).astype(np.uint8), cv2.COLORMAP_JET)
     scaled_colormap_predicted_dbh = cv2.applyColorMap((scaled_dbh * 255 / dbh_max).astype(np.uint8), cv2.COLORMAP_JET)
+    colormap_output_image_normalized = cv2.applyColorMap((normalized_output_image * 255 / np.max(segmentation_tensor_np)).astype(np.uint8), cv2.COLORMAP_JET)
 
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
-    axs[0].imshow(original_dbh, cmap='viridis')
+    fig, axs = plt.subplots(1, 4 , figsize=(24, 6))
+    axs[0].imshow(original_dbh)
     axs[0].set_title('Original DBH')
     axs[0].axis('off')
 
-    axs[1].imshow(predicted_dbh, cmap='viridis')
+    axs[1].imshow(predicted_dbh)
     axs[1].set_title('Predicted DBH')
     axs[1].axis('off')
 
-    axs[2].imshow(scaled_dbh, cmap='viridis')
+    axs[2].imshow(scaled_dbh)
     axs[2].set_title('Scaled Predicted DBH')
     axs[2].axis('off')
 
-    # axs[3].imshow(scaled_dbh, cmap='viridis')
-    # axs[3].set_title('Loaded model Scaled Predicted DBH')
-    # axs[3].axis('off')
+    axs[3].imshow(colormap_output_image_normalized)
+    axs[3].set_title('Loaded model (trained on whole image) Predicted DBH')
+    axs[3].axis('off')
 
     print(np.unique(original_dbh))
     print(np.unique(predicted_dbh))
