@@ -204,9 +204,9 @@ if __name__ == "__main__":
     axs[2].set_title('Scaled Predicted DBH')
     axs[2].axis('off')
 
-    axs[3].imshow(scaled_dbh, cmap='viridis')
-    axs[3].set_title('Loaded model Scaled Predicted DBH')
-    axs[3].axis('off')
+    # axs[3].imshow(scaled_dbh, cmap='viridis')
+    # axs[3].set_title('Loaded model Scaled Predicted DBH')
+    # axs[3].axis('off')
 
     print(np.unique(original_dbh))
     print(np.unique(predicted_dbh))
