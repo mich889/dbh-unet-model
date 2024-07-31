@@ -10,16 +10,22 @@ from model import UNET
 from train import get_unique_filename
 import cv2
 
-model_path = "/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/models/model_16.pth"
-dbh_file = "/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/dbh.npy"
-image_path = "/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/DJI_0002.JPG"
+# model_path = "/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/models/model_16.pth"
+# dbh_file = "/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/dbh.npy"
+# image_path = "/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/DJI_0002.JPG"
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "datafiles/models/model_16.pth")
+DBH_FILE = os.path.join(BASE_DIR, "datafiles/dbh.npy")
+IMAGE_PATH = os.path.join(BASE_DIR, "datafiles/DJI_0002.JPG")
+OUTPUT_IMAGE_PATH = os.path.join(BASE_DIR, "datafiles/output_image.png")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet()
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 
-    image = Image.open(image_path)
+    image = Image.open(IMAGE_PATH)
     
     # Crop to middle 512 x 512
     width, height = image.size
@@ -51,7 +57,7 @@ if __name__ == "__main__":
         output_image = output_image.transpose(1, 2, 0)  # Change from (C, H, W) to (H, W, C)
         output_image = (output_image * 255).astype(np.uint8)
 
-    dbh_segmentation = np.load(dbh_file)
+    dbh_segmentation = np.load(DBH_FILE)
     height, width = dbh_segmentation.shape
     left = (width - 512) // 2
     top = (height - 512) // 2
@@ -64,6 +70,12 @@ if __name__ == "__main__":
     output_image_min, output_image_max = output_image.min(), output_image.max()
     normalized_output_image = ((output_image - output_image_min) / (output_image_max - output_image_min)) * (dbh_max - dbh_min) + dbh_min
 
+    scale = (dbh_max - dbh_min) / (output_image_max - output_image_min)
+    offset = dbh_min - (output_image_min * scale)
+
+    # Apply the transformation
+    scaled_output = (output_image * scale) + offset
+
     # Apply colormap to the cropped DBH segmentation for visualization
     colormap_dbh_segmentation = cv2.applyColorMap((dbh_segmentation_cropped * 255).astype(np.uint8), cv2.COLORMAP_JET)
 
@@ -72,6 +84,7 @@ if __name__ == "__main__":
 
     # Apply colormap to the normalized output image
     colormap_output_image_normalized = cv2.applyColorMap((normalized_output_image * 255 / dbh_max).astype(np.uint8), cv2.COLORMAP_JET)
+    colormap_output_image_normalized = cv2.applyColorMap((scaled_output * 255 / dbh_max).astype(np.uint8), cv2.COLORMAP_JET)
 
     # Calculate accuracy
     if output_image.shape == dbh_segmentation_cropped.shape:
@@ -97,5 +110,5 @@ if __name__ == "__main__":
     print(f"Output image shape: {output_image.shape}, DBH segmentation shape: {dbh_segmentation_cropped.shape}, normalized output image shape: {normalized_output_image.shape}")
     print(f"output_image unique values: {np.unique(output_image)}, dbh_segmentation_cropped unique values: {np.unique(dbh_segmentation_cropped)}, normalized_output_image unique values: {np.unique(normalized_output_image)}")
     # Show the combined image
-    plt.savefig("/Users/michellechen/cs/other/research/nerfforest-model/model/datafiles/combined_image.png")
+    plt.savefig(get_unique_filename(OUTPUT_IMAGE_PATH))
     plt.show()
